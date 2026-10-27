@@ -45,7 +45,15 @@ export function HHOverride(props: { product: Product }) {
           <span className="lbl">Pricing</span>
           <select
             value={setting.type}
-            onChange={(e) => set(() => ({ type: e.target.value as HHSetting['type'] }))}
+            onChange={(e) => {
+              const to = e.target.value as HHSetting['type'];
+              // $ values carry between $ off and set price; a percent never becomes cents
+              const cents = ['off', 'price'];
+              set((hh) => ({
+                type: to,
+                ...(cents.includes(hh.type) && cents.includes(to) ? { value: hh.value ?? 0 } : {}),
+              }));
+            }}
           >
             {TYPES.map((t) => (
               <option key={t.k} value={t.k} disabled={t.k === 'price' && !isItem(p)}>

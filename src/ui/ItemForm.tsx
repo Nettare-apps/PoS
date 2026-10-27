@@ -41,7 +41,13 @@ export function ItemForm(props: { item: MenuItem; onDeleted: () => void }) {
             value={p.price / 100}
             min={0}
             step={1}
-            onCommit={(v) => edit((dp) => (dp.price = Math.round(Math.max(0, v ?? 0)) * 100))}
+            onCommit={(v) =>
+              edit((dp) => {
+                dp.price = Math.round(Math.max(0, v ?? 0)) * 100;
+                // entering a real price reconciles it: the placeholder flag clears (prototype parity)
+                if (dp.price > 0) delete dp.placeholder;
+              })
+            }
           />
           <label className="chk">
             <input type="checkbox" checked={!!p.placeholder} onChange={(e) => edit((dp) => (dp.placeholder = e.target.checked || undefined))} />
@@ -103,7 +109,7 @@ export function ItemForm(props: { item: MenuItem; onDeleted: () => void }) {
       </section>
 
       <CategoryPicker product={p} />
-      <ModsSetup productId={p.id} cats={p.cats} />
+      <ModsSetup productId={p.id} cats={p.cats} productName={p.name} />
       <HHOverride product={p} />
 
       <section className="fs danger-zone">

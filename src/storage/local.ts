@@ -30,53 +30,55 @@ const K = {
 
 export const LOCAL_HISTORY = 8;
 
+/**
+ * Holds its state in memory and persists best-effort: a device whose
+ * localStorage is missing or full still runs (with the storage-error banner)
+ * instead of crashing — it just won't survive a reload.
+ */
 export class LocalLibraryStore implements LibraryStore {
-  constructor(private kv: KV) {
-    if (!this.kv.get<PublishedRevision[] | null>(K.revisions, null)) {
-      const seed = seedLibrary();
-      const rev: PublishedRevision = {
-        rev: 1,
-        at: new Date().toISOString(),
-        by: null,
-        source: 'publish',
-        data: seed,
-      };
-      this.kv.set(K.revisions, [rev]);
-      this.kv.set(K.draft, seed);
-    }
-  }
+  private revs: PublishedRevision[];
+  private draft: LibraryData;
 
-  private revisions(): PublishedRevision[] {
-    return this.kv.get<PublishedRevision[]>(K.revisions, []);
+  constructor(private kv: KV) {
+    const stored = this.kv.get<PublishedRevision[] | null>(K.revisions, null);
+    if (stored && stored.length) {
+      this.revs = stored;
+      this.draft = this.kv.get<LibraryData | null>(K.draft, null) ?? deepClone(stored[stored.length - 1]!.data);
+    } else {
+      const seed = seedLibrary();
+      this.revs = [{ rev: 1, at: new Date().toISOString(), by: null, source: 'publish', data: seed }];
+      this.draft = deepClone(seed);
+      this.kv.set(K.revisions, this.revs);
+      this.kv.set(K.draft, this.draft);
+    }
   }
 
   getDraft(): LibraryData {
-    return this.kv.get<LibraryData | null>(K.draft, null) ?? deepClone(this.getPublished().data);
+    return deepClone(this.draft);
   }
 
   setDraft(data: LibraryData): void {
-    this.kv.set(K.draft, data);
+    this.draft = deepClone(data);
+    this.kv.set(K.draft, this.draft);
   }
 
   getPublished(): PublishedRevision {
-    const revs = this.revisions();
-    return revs[revs.length - 1]!;
+    return this.revs[this.revs.length - 1]!;
   }
 
   appendPublished(revision: PublishedRevision): void {
-    const revs = this.revisions();
-    const head = revs[revs.length - 1];
+    const head = this.revs[this.revs.length - 1];
     if (head && revision.rev !== head.rev + 1) {
       throw new Error(`Revision ${revision.rev} does not follow ${head.rev}`);
     }
-    revs.push(revision);
+    this.revs.push(revision);
     // this device keeps only the latest few revisions; the backend keeps 30 days
-    while (revs.length > LOCAL_HISTORY) revs.shift();
-    this.kv.set(K.revisions, revs);
+    while (this.revs.length > LOCAL_HISTORY) this.revs.shift();
+    this.kv.set(K.revisions, this.revs);
   }
 
   history(): readonly PublishedRevision[] {
-    return this.revisions();
+    return this.revs.slice();
   }
 }
 

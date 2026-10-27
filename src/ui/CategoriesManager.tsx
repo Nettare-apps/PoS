@@ -18,7 +18,8 @@ export function CategoriesManager() {
   const [confirmDel, setConfirmDel] = useState<string | null>(null);
   const { categories, settings } = app.working;
   const ordered = orderedCategories(categories, settings.parents);
-  const parents = categories.filter((c) => childrenOf(settings.parents, c).length || !settings.parents[c]);
+  // only top-level categories can be parents; a category with children can't take one (one level deep)
+  const topLevel = categories.filter((c) => !settings.parents[c]);
 
   return (
     <div className="catmgr">
@@ -53,20 +54,26 @@ export function CategoriesManager() {
                 />
               </td>
               <td>
-                <select
-                  value={settings.parents[c] ?? ''}
-                  aria-label={`Parent of ${c}`}
-                  onChange={(e) => app.mutate((d) => setParent(d, c, e.target.value || null))}
-                >
-                  <option value="">—</option>
-                  {parents
-                    .filter((pc) => pc !== c)
-                    .map((pc) => (
-                      <option key={pc} value={pc}>
-                        {pc}
-                      </option>
-                    ))}
-                </select>
+                {childrenOf(settings.parents, c).length ? (
+                  <span className="muted" title="A category with sub-categories cannot take a parent">
+                    Has sub-categories
+                  </span>
+                ) : (
+                  <select
+                    value={settings.parents[c] ?? ''}
+                    aria-label={`Parent of ${c}`}
+                    onChange={(e) => app.mutate((d) => setParent(d, c, e.target.value || null))}
+                  >
+                    <option value="">—</option>
+                    {topLevel
+                      .filter((pc) => pc !== c)
+                      .map((pc) => (
+                        <option key={pc} value={pc}>
+                          {pc}
+                        </option>
+                      ))}
+                  </select>
+                )}
               </td>
               <td>
                 {confirmDel === c ? (

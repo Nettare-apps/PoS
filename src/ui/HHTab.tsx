@@ -36,6 +36,17 @@ export function HHTab() {
       else lib.settings.hh.menus[c] = next;
     });
 
+  /**
+   * Values carry across a type switch only between types that share a unit
+   * ($ off ↔ set price, both cents). A percent never becomes cents or vice
+   * versa — the old raw-carry turned "$5 off" into 500% off, pricing items
+   * at $0 for the whole window.
+   */
+  const carriedValue = (from: HHSetting['type'], to: HHSetting['type'], value: number | undefined): number => {
+    const centsTypes = ['off', 'price'];
+    return centsTypes.includes(from) && centsTypes.includes(to) ? (value ?? 0) : 0;
+  };
+
   return (
     <div className="hhgrid">
       <section className="pane">
@@ -101,7 +112,10 @@ export function HHTab() {
                     <select
                       value={r.type}
                       aria-label={`${c} happy hour`}
-                      onChange={(e) => setMenu(c, { type: e.target.value as HHSetting['type'], value: r.value ?? 0 })}
+                      onChange={(e) => {
+                        const to = e.target.value as HHSetting['type'];
+                        setMenu(c, { type: to, value: carriedValue(r.type, to, r.value) });
+                      }}
                     >
                       {MENU_TYPES.map((t) => (
                         <option key={t.k} value={t.k}>

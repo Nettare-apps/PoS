@@ -23,7 +23,11 @@ export function TextField(props: {
         placeholder={props.placeholder}
         maxLength={props.maxLength}
         onChange={(e) => setV(e.target.value)}
-        onBlur={() => v !== props.value && props.onCommit(v)}
+        onBlur={() => {
+          if (v !== props.value) props.onCommit(v);
+          // if the handler ignored the commit, fall back to the stored value
+          setV(props.value);
+        }}
         onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
       />
     </label>
@@ -46,7 +50,9 @@ export function NumField(props: {
     const n = v.trim() === '' ? null : Number(v);
     const next = n != null && Number.isFinite(n) ? n : null;
     if (next !== props.value) props.onCommit(next);
-    else setV(show);
+    // if the handler ignored or clamped the commit, the field falls back to
+    // the stored value (the useEffect above resyncs when it DID change)
+    setV(show);
   };
   return (
     <label className="f">

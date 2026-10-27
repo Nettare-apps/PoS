@@ -2,6 +2,7 @@
  * A product's modifier setup (SPEC §7): inherit what its menus carry, or its
  * own list of groups with rules.
  */
+import { useState } from 'react';
 import type { ModAssignment, ModRule } from '../library/types';
 import { useApp } from './ctx';
 
@@ -11,8 +12,9 @@ const RULES: { k: ModRule; label: string }[] = [
   { k: 'optional', label: 'Optional' },
 ];
 
-export function ModsSetup(props: { productId: string; cats: string[] }) {
+export function ModsSetup(props: { productId: string; cats: string[]; productName?: string }) {
   const app = useApp();
+  const [confirmInherit, setConfirmInherit] = useState(false);
   const { mods, settings } = app.working;
   const own = mods.items[props.productId];
 
@@ -46,14 +48,32 @@ export function ModsSetup(props: { productId: string; cats: string[] }) {
         <input
           type="checkbox"
           checked={!own}
-          onChange={(e) =>
-            e.target.checked
-              ? app.mutate((d) => delete d.mods.items[props.productId])
-              : setOwn((g) => g)
-          }
+          onChange={(e) => {
+            if (!e.target.checked) return setOwn((g) => g);
+            // going back to the menu setup throws this product's own setup away — confirm first
+            if (own && own.groups.length) setConfirmInherit(true);
+            else app.mutate((d) => delete d.mods.items[props.productId]);
+          }}
         />
         Use the menu setup
       </label>
+      {confirmInherit ? (
+        <p className="warnbox" role="alert">
+          Drop this product's own modifier setup ({own?.groups.length} group{own?.groups.length === 1 ? '' : 's'}) and go back to the menus?
+          <button className="btn sm" onClick={() => setConfirmInherit(false)}>
+            Keep it
+          </button>
+          <button
+            className="btn sm danger"
+            onClick={() => {
+              app.mutate((d) => delete d.mods.items[props.productId]);
+              setConfirmInherit(false);
+            }}
+          >
+            Use the menus
+          </button>
+        </p>
+      ) : null}
       {!own ? (
         <ul className="modlist muted">
           {inherited.length ? (
@@ -85,7 +105,26 @@ export function ModsSetup(props: { productId: string; cats: string[] }) {
               </li>
             ))}
           </ul>
-          <AddGroup existing={own.groups.map((g) => g.gid)} onAdd={(gid) => setOwn((g) => [...g, { gid, rule: 'optional' }])} />
+          <div className="row-btns">
+            <AddGroup existing={own.groups.map((g) => g.gid)} onAdd={(gid) => setOwn((g) => [...g, { gid, rule: 'optional' }])} />
+            <button
+              className="btn sm"
+              onClick={() => {
+                // SPEC §7: a new group can be created from an item's page; it stays a
+                // group, tied to this item only until assigned to menus
+                const gid = `g${Date.now().toString(36)}`;
+                app.mutate((d) => {
+                  d.mods.groups.push({ id: gid, name: `${props.productName ?? 'Item'} options`, multi: true, items: [] });
+                  const cur = d.mods.items[props.productId] ?? { inherit: false as const, groups: [] };
+                  cur.groups = [...cur.groups, { gid, rule: 'optional' }];
+                  d.mods.items[props.productId] = cur;
+                });
+              }}
+            >
+              + New group for this item
+            </button>
+          </div>
+          <p className="muted hint">A group made here stays tied to this item until it is assigned to menus in the Modifiers tab.</p>
         </>
       )}
     </section>

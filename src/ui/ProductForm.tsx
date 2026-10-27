@@ -38,8 +38,8 @@ export function ProductForm(props: { pour: Pour; onDeleted: () => void }) {
       <section className="fs">
         <h3>Container and costs</h3>
         <div className="row4">
-          <NumField label="Size (mL)" value={p.size} min={1} onCommit={(v) => edit((dp) => (dp.size = v ?? dp.size))} />
-          <NumField label="Pack" value={p.pack} min={1} onCommit={(v) => edit((dp) => (dp.pack = v ?? 1))} />
+          <NumField label="Size (mL)" value={p.size} min={1} onCommit={(v) => v != null && v > 0 && edit((dp) => (dp.size = v))} />
+          <NumField label="Pack" value={p.pack} min={1} onCommit={(v) => v != null && v > 0 && edit((dp) => (dp.pack = v))} />
           {COST_BASES.map((b) => (
             <MoneyField key={b} label={`${b[0]!.toUpperCase()}${b.slice(1)} $`} cents={p.cost[b]} onCommit={(v) => edit((dp) => (dp.cost[b] = v))} />
           ))}
@@ -62,8 +62,8 @@ export function ProductForm(props: { pour: Pour; onDeleted: () => void }) {
               ))}
             </select>
           </label>
-          <NumField label="Cost % · bucket 1" value={p.scale.min} min={1} onCommit={(v) => edit((dp) => (dp.scale.min = v ?? dp.scale.min))} />
-          <NumField label="Cost % · bucket 10" value={p.scale.max} min={1} onCommit={(v) => edit((dp) => (dp.scale.max = v ?? dp.scale.max))} />
+          <NumField label="Cost % · bucket 1" value={p.scale.min} min={1} onCommit={(v) => v != null && v > 0 && edit((dp) => (dp.scale.min = v))} />
+          <NumField label="Cost % · bucket 10" value={p.scale.max} min={1} onCommit={(v) => v != null && v > 0 && edit((dp) => (dp.scale.max = v))} />
         </div>
         <p className="muted hint">
           New standard pours start on this cost basis; each pour button picks its own below. A 1.5 oz custom
@@ -74,7 +74,7 @@ export function ProductForm(props: { pour: Pour; onDeleted: () => void }) {
 
       <ServingsTable pour={p} />
       <CategoryPicker product={p} />
-      <ModsSetup productId={p.id} cats={p.cats} />
+      <ModsSetup productId={p.id} cats={p.cats} productName={p.name} />
       <HHOverride product={p} />
 
       <section className="fs">
@@ -85,7 +85,8 @@ export function ProductForm(props: { pour: Pour; onDeleted: () => void }) {
             value={count}
             min={0}
             step={0.1}
-            onCommit={(v) => app.setCount(p.id, v ?? 0)}
+            // counts apply immediately, so an emptied field never silently zeroes the live count
+            onCommit={(v) => v != null && v >= 0 && app.setCount(p.id, v)}
           />
           <p className="muted hint">
             Counts apply immediately — they are not part of the publish cycle. From this count:{' '}

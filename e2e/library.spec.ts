@@ -90,6 +90,39 @@ test('happy hour rules: menu pricing and a midnight-crossing window', async ({ p
   await expect(page.getByText('Published · no pending changes')).toBeVisible();
 });
 
+test('a happy-hour dollar value survives its round trip and never leaks across a unit switch', async ({ page }) => {
+  await page.getByRole('button', { name: 'Happy hour' }).click();
+  const wine = page.getByRole('row', { name: /^Wine/ });
+  await page.getByLabel('Wine happy hour').selectOption('off');
+  const value = wine.getByRole('spinbutton');
+  await value.fill('5');
+  await value.blur();
+  await page.getByRole('button', { name: 'Save draft' }).click();
+  await page.reload();
+  await page.getByRole('button', { name: 'Happy hour' }).click();
+  // $5 came back as $5, not 500
+  await expect(page.getByRole('row', { name: /^Wine/ }).getByRole('spinbutton')).toHaveValue('5');
+  // switching $ off → % off must NOT carry 500 cents into a 500% discount
+  await page.getByLabel('Wine happy hour').selectOption('pct');
+  await expect(page.getByRole('row', { name: /^Wine/ }).getByRole('spinbutton')).toHaveValue('0');
+  // $ off ↔ set price share a unit, so the dollars carry
+  await page.getByLabel('Wine happy hour').selectOption('off');
+  await page.getByRole('row', { name: /^Wine/ }).getByRole('spinbutton').fill('5');
+  await page.getByRole('row', { name: /^Wine/ }).getByRole('spinbutton').blur();
+  await page.getByLabel('Wine happy hour').selectOption('price');
+  await expect(page.getByRole('row', { name: /^Wine/ }).getByRole('spinbutton')).toHaveValue('5');
+});
+
+test('pricing inputs reject zeroes instead of publishing $Infinity', async ({ page }) => {
+  await openBankNote(page);
+  await page.getByLabel('Size (mL)').fill('0');
+  await page.getByLabel('Size (mL)').blur();
+  // the commit is ignored and the field falls back to the stored value
+  await expect(page.getByLabel('Size (mL)')).toHaveValue('750');
+  await expect(page.getByText('Published · no pending changes')).toBeVisible();
+  await expect(page.getByText('Infinity')).toHaveCount(0);
+});
+
 test('the activity log records the lifecycle, committed and taps apart', async ({ page }) => {
   await openBankNote(page);
   await page.getByLabel('Pack').fill('2');

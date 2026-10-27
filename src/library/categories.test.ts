@@ -69,6 +69,28 @@ describe('category operations (SPEC §7)', () => {
     expect(l.settings.parents['Zero Proof']).toBeUndefined();
   });
 
+  it('keeps the hierarchy one level deep: parents with children take no parent, children parent nothing', () => {
+    const l = lib();
+    // Spirits has children — giving it a parent would orphan them from every list
+    setParent(l, 'Spirits', 'Food');
+    expect(l.settings.parents['Spirits']).toBeUndefined();
+    // a child category can't become someone's parent
+    setParent(l, 'Cocktails', 'Whisky');
+    expect(l.settings.parents['Cocktails']).toBeUndefined();
+    // self-parenting is ignored
+    setParent(l, 'Wine', 'Wine');
+    expect(l.settings.parents['Wine']).toBeUndefined();
+  });
+
+  it('delete also cleans the modifier menus and happy-hour menus', () => {
+    const l = lib();
+    l.settings.hh.menus['Cocktails'] = { type: 'pct', value: 20 };
+    expect(l.mods.menus['Cocktails']).toBeDefined();
+    deleteCategory(l, 'Cocktails');
+    expect(l.mods.menus['Cocktails']).toBeUndefined();
+    expect(l.settings.hh.menus['Cocktails']).toBeUndefined();
+  });
+
   it('inCategory sees children through the parent; orderedCategories nests children after parents', () => {
     const l = lib();
     const bankNote = l.products.find((p) => p.name === 'Bank Note 5yr Peated')!;

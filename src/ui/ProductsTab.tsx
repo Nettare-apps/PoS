@@ -42,19 +42,22 @@ export function ProductsTab() {
 
   const addProduct = (kind: 'pour' | 'item') => {
     const id = `n${kind === 'pour' ? 'p' : 'i'}${Date.now().toString(36)}`;
+    // under "All" a new product starts untagged (prototype parity) — never silently filed somewhere
     const cats0 = cat !== 'All' ? [cat] : [];
     app.mutate((d) => {
-      const base = { id, name: kind === 'pour' ? 'New pour' : 'New item', cats: cats0.length ? cats0 : [d.categories[0]!], primary: null, section: '' };
+      const base = { id, name: kind === 'pour' ? 'New pour' : 'New item', cats: cats0, primary: null, section: '' };
       if (kind === 'pour') {
+        // prototype defaults: net basis (SPEC §5: net is expected to be the most used),
+        // pack 12, one 1.5 oz serving at 20%
         d.products.unshift({
           ...base,
           kind: 'pour',
           size: 750,
-          pack: 1,
+          pack: 12,
           cost: { frontline: null, net: null, sale: null },
-          basis: 'frontline',
+          basis: 'net',
           scale: { min: 15, max: 25 },
-          servings: [{ qty: 1, unit: 'oz', target: 15, basis: 'frontline' }],
+          servings: [{ qty: 1.5, unit: 'oz', target: 20, basis: 'net' }],
         });
       } else {
         d.products.unshift({ ...base, kind: 'item', price: 0, placeholder: true, recipe: [] });

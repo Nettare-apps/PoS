@@ -68,9 +68,20 @@ export function deleteCategory(lib: LibraryData, cat: string): void {
   delete lib.settings.hh.menus[cat];
 }
 
+/**
+ * The hierarchy is one level deep (prototype line 1879: a category with
+ * sub-categories can't take a parent, and only top-level categories can be
+ * parents). Violations are ignored.
+ */
 export function setParent(lib: LibraryData, cat: string, parent: string | null): void {
-  if (!parent) delete lib.settings.parents[cat];
-  else if (parent !== cat) lib.settings.parents[cat] = parent;
+  if (!parent) {
+    delete lib.settings.parents[cat];
+    return;
+  }
+  if (parent === cat) return;
+  if (childrenOf(lib.settings.parents, cat).length) return; // cat has children
+  if (lib.settings.parents[parent]) return; // parent is itself a child
+  lib.settings.parents[cat] = parent;
 }
 
 export const childrenOf = (parents: Record<string, string>, cat: string): string[] =>

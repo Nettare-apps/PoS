@@ -45,7 +45,7 @@ export function ServingsTable(props: { pour: Pour }) {
                     <TextField label="" value={s.label ?? ''} onCommit={(v) => edit(i, (sv) => (sv.label = v || undefined))} placeholder={`${s.qty} ${s.unit}`} />
                   </td>
                   <td>
-                    <NumField label="" value={s.qty} min={0} step={0.25} width={72} onCommit={(v) => edit(i, (sv) => (sv.qty = v ?? 0))} />
+                    <NumField label="" value={s.qty} min={0} step={0.25} width={64} onCommit={(v) => v != null && v > 0 && edit(i, (sv) => (sv.qty = v))} />
                   </td>
                   <td>
                     <select value={s.unit} onChange={(e) => edit(i, (sv) => (sv.unit = e.target.value as Serving['unit']))} aria-label="Unit">
@@ -63,10 +63,23 @@ export function ServingsTable(props: { pour: Pour }) {
                     </select>
                   </td>
                   <td className="num">
-                    <NumField label="" value={s.target} min={0} step={1} width={64} onCommit={(v) => edit(i, (sv) => (sv.target = v ?? 0))} />
+                    <NumField label="" value={s.target} min={0} step={1} width={56} onCommit={(v) => v != null && v > 0 && edit(i, (sv) => (sv.target = v))} />
                   </td>
                   <td className="num">
-                    <MoneyField label="" cents={s.override ?? null} step={1} width={72} onCommit={(v) => edit(i, (sv) => (v && v > 0 ? (sv.override = v) : delete sv.override))} />
+                    {/* overrides are whole dollars (SPEC §5), rounded on commit like the item price */}
+                    <MoneyField
+                      label=""
+                      cents={s.override ?? null}
+                      step={1}
+                      width={64}
+                      onCommit={(v) =>
+                        edit(i, (sv) => {
+                          const whole = v != null && v > 0 ? Math.round(v / 100) * 100 : 0;
+                          if (whole > 0) sv.override = whole;
+                          else delete sv.override;
+                        })
+                      }
+                    />
                   </td>
                   <td className="num">
                     {q.price != null ? formatCents(q.price) : '—'}

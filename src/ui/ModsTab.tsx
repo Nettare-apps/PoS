@@ -5,6 +5,7 @@
  */
 import { useState } from 'react';
 import { isPour } from '../engine/types';
+import { OZ_TO_ML } from '../engine/units';
 import { orderedCategories } from '../library/categories';
 import type { ModGroup, ModRule } from '../library/types';
 import { useApp } from './ctx';
@@ -25,7 +26,8 @@ export function ModsTab() {
 
   const addGroup = () => {
     const id = `g${Date.now().toString(36)}`;
-    app.mutate((d) => d.mods.groups.push({ id, name: 'New group', multi: false, items: [] }));
+    // prototype default: a new group is pick-any (multi)
+    app.mutate((d) => d.mods.groups.push({ id, name: 'New group', multi: true, items: [] }));
     setSel(id);
   };
 
@@ -91,6 +93,30 @@ function GroupForm(props: { group: ModGroup; onDeleted: () => void }) {
       </div>
       {g.kind === 'seat' ? (
         <p className="muted hint">Seats are built in: Share (table) plus seat numbers from the table's layout or party size. No items to edit.</p>
+      ) : g.kind === 'course' ? (
+        <section className="fs">
+          <h3>Courses</h3>
+          <p className="muted hint">Course order is the firing order (SPEC §8). One course per item; no prices or depletion here.</p>
+          <ul className="modlist">
+            {g.items.map((it, i) => (
+              <li key={it.id}>
+                <TextField label="" value={it.name} onCommit={(v) => v.trim() && edit((dg) => (dg.items[i]!.name = v.trim()))} />
+                <button className="btn sm" aria-label={`Move ${it.name} up`} disabled={i === 0} onClick={() => edit((dg) => dg.items.splice(i - 1, 0, dg.items.splice(i, 1)[0]!))}>
+                  ↑
+                </button>
+                <button className="btn sm" aria-label={`Move ${it.name} down`} disabled={i === g.items.length - 1} onClick={() => edit((dg) => dg.items.splice(i + 1, 0, dg.items.splice(i, 1)[0]!))}>
+                  ↓
+                </button>
+                <button className="btn sm" aria-label={`Remove ${it.name}`} onClick={() => edit((dg) => dg.items.splice(i, 1))}>
+                  ✕
+                </button>
+              </li>
+            ))}
+          </ul>
+          <button className="btn sm" onClick={() => edit((dg) => dg.items.push({ id: `c${Date.now().toString(36)}`, name: 'New course', price: 0, link: null }))}>
+            + Add course
+          </button>
+        </section>
       ) : (
         <section className="fs">
           <h3>Items</h3>
@@ -101,7 +127,7 @@ function GroupForm(props: { group: ModGroup; onDeleted: () => void }) {
                 <th>Name</th>
                 <th className="num">Price $</th>
                 <th>Depletes</th>
-                <th className="num">mL</th>
+                <th className="num">Amount (oz)</th>
                 <th></th>
               </tr>
             </thead>
@@ -121,7 +147,7 @@ function GroupForm(props: { group: ModGroup; onDeleted: () => void }) {
                       onChange={(e) =>
                         edit((dg) => {
                           const pid = e.target.value;
-                          dg.items[i]!.link = pid ? { pid, ml: dg.items[i]!.link?.ml ?? 30 } : null;
+                          dg.items[i]!.link = pid ? { pid, ml: dg.items[i]!.link?.ml ?? OZ_TO_ML } : null;
                         })
                       }
                     >
@@ -135,7 +161,15 @@ function GroupForm(props: { group: ModGroup; onDeleted: () => void }) {
                   </td>
                   <td className="num">
                     {it.link ? (
-                      <NumField label="" value={it.link.ml} min={0} step={1} width={64} onCommit={(v) => edit((dg) => (dg.items[i]!.link = { pid: dg.items[i]!.link!.pid, ml: v ?? 0 }))} />
+                      // entered in oz like the prototype; stored in mL like every line
+                      <NumField
+                        label=""
+                        value={+(it.link.ml / OZ_TO_ML).toFixed(2)}
+                        min={0}
+                        step={0.25}
+                        width={64}
+                        onCommit={(v) => v != null && v > 0 && edit((dg) => (dg.items[i]!.link = { pid: dg.items[i]!.link!.pid, ml: v * OZ_TO_ML }))}
+                      />
                     ) : null}
                   </td>
                   <td>
