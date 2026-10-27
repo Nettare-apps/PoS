@@ -1,0 +1,148 @@
+/**
+ * The library's draft → publish → revert lifecycle (SPEC §1/§7).
+ *
+ * Invariants:
+ * - The register reads ONLY the published library (`published()`).
+ * - Edits are drafts until published.
+ * - Every publish is kept as a numbered revision, whatever its source
+ *   (normal publish, quick edit, revert), so a publish can be reverted to
+ *   any earlier revision — a revert publishes the old revision's data as a
+ *   NEW revision; history is never rewritten.
+ * - Retention (Conner, 2026-10-27): the storage layer keeps revisions for
+ *   30 days (never pruning the current published one). The in-memory store
+ *   keeps everything.
+ * - "Discard edits" (working copy ← draft) is a client-side concern; the
+ *   domain holds the draft and the published revisions.
+ */
+import type { EventLog } from '../events/log';
+import type { EventContext } from '../events/types';
+import { deepClone, deepEqual, normalizeLibrary } from './normalize';
+import type { LibraryData } from './types';
+
+/**
+ * Where a published revision came from (Conner, 2026-10-27: "Anything
+ * published should be recorded regardless of the source. I'd like to be able
+ * to see which ones came from quick edit.")
+ */
+export type PublishSource = 'publish' | 'quick_edit' | 'revert';
+
+export interface PublishedRevision {
+  rev: number;
+  at: string;
+  by: string | null;
+  source: PublishSource;
+  data: LibraryData;
+}
+
+/** Storage port. Implementations must persist exactly what they are given. */
+export interface LibraryStore {
+  getDraft(): LibraryData;
+  setDraft(data: LibraryData): void;
+  getPublished(): PublishedRevision;
+  appendPublished(revision: PublishedRevision): void;
+  history(): readonly PublishedRevision[];
+}
+
+/** The prototype's publish-bar state (pubState, lines 1801-1804). */
+export interface PubState {
+  /** working copy differs from the saved draft */
+  dirty: boolean;
+  /** saved draft differs from published */
+  unpub: boolean;
+  /** working copy differs from published */
+  diffLive: boolean;
+}
+
+export class LibraryService {
+  constructor(
+    private store: LibraryStore,
+    private log: EventLog,
+    private clock: () => Date = () => new Date(),
+  ) {}
+
+  /** What the register prices and sells from. Nothing else. */
+  published(): LibraryData {
+    return deepClone(this.store.getPublished().data);
+  }
+
+  publishedRevision(): PublishedRevision {
+    const r = this.store.getPublished();
+    return { ...r, data: deepClone(r.data) };
+  }
+
+  draft(): LibraryData {
+    return deepClone(this.store.getDraft());
+  }
+
+  history(): readonly PublishedRevision[] {
+    return this.store.history().map((r) => ({ ...r, data: deepClone(r.data) }));
+  }
+
+  pubState(working?: LibraryData): PubState {
+    // Save and publish normalize what they store, so the working copy must be
+    // normalized the same way before comparing — otherwise a working copy
+    // that normalization would change reads as "dirty" forever.
+    const w = normalizeLibrary(deepClone(working ?? this.store.getDraft()));
+    const draft = normalizeLibrary(this.store.getDraft());
+    const published = normalizeLibrary(this.store.getPublished().data);
+    return {
+      dirty: !deepEqual(w, draft),
+      unpub: !deepEqual(draft, published),
+      diffLive: !deepEqual(w, published),
+    };
+  }
+
+  /** Save the working copy as the draft (prototype pb-save, line 1837). */
+  saveDraft(data: LibraryData, ctx: EventContext): void {
+    this.store.setDraft(normalizeLibrary(deepClone(data)));
+    this.log.append('library_save_draft', ctx);
+  }
+
+  /**
+   * Publish the working copy: it becomes both the draft and the published
+   * library, as a new revision (prototype pb-pub, lines 1838-1843).
+   * `source` marks where the publish came from, so quick edits can be found
+   * in the history and the log.
+   */
+  publish(data: LibraryData, ctx: EventContext, source: PublishSource = 'publish'): PublishedRevision {
+    const normalized = normalizeLibrary(deepClone(data));
+    const rev = this.store.getPublished().rev + 1;
+    const revision: PublishedRevision = {
+      rev,
+      at: this.clock().toISOString(),
+      by: ctx.user,
+      source,
+      data: normalized,
+    };
+    // Append the revision before touching the draft: if the store rejects the
+    // revision, nothing has changed. (A persistent adapter should still wrap
+    // revision + draft in one transaction.)
+    this.store.appendPublished(revision);
+    this.store.setDraft(deepClone(normalized));
+    this.log.append('library_publish', ctx, { rev, source });
+    return revision;
+  }
+
+  /**
+   * Drop every change since the last publish, including the saved draft
+   * (prototype revert, line 1830). Returns the restored data.
+   */
+  revertToPublished(ctx: EventContext): LibraryData {
+    const published = this.store.getPublished();
+    this.store.setDraft(deepClone(published.data));
+    this.log.append('library_revert', ctx, { toRev: published.rev });
+    return deepClone(published.data);
+  }
+
+  /**
+   * Roll the published library back to an earlier revision by publishing that
+   * revision's data as a NEW revision. History is append-only.
+   */
+  revertToRevision(rev: number, ctx: EventContext): PublishedRevision {
+    const target = this.store.history().find((r) => r.rev === rev);
+    if (!target) throw new Error(`No published revision ${rev}`);
+    const republished = this.publish(deepClone(target.data), ctx, 'revert');
+    this.log.append('library_revert', ctx, { toRev: rev, publishedAs: republished.rev });
+    return republished;
+  }
+}
