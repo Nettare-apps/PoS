@@ -252,12 +252,18 @@ function withParentCategories(categories: string[], parents: Record<string, stri
 export function seedLibrary(options: SeedOptions = {}): LibraryData {
   const strip = options.stripOverrides ?? true;
   const products = data.products.map((p) => seedProduct(p, strip));
-  const parentsAll = seedParents();
-  const parents: Record<string, string> = {};
-  for (const [c, parent] of Object.entries(parentsAll)) {
-    if (data.categories.includes(c)) parents[c] = parent;
+  // Prototype order: normLib first appends any category a product uses that
+  // the list is missing (line 566), THEN migrateLib derives parents from and
+  // inserts parent categories into that augmented list (lines 2151-2155).
+  const baseCategories = data.categories.slice();
+  for (const p of products) {
+    for (const c of p.cats) if (!baseCategories.includes(c)) baseCategories.push(c);
   }
-  const categories = withParentCategories(data.categories, parents);
+  const parents: Record<string, string> = {};
+  for (const [c, parent] of Object.entries(seedParents())) {
+    if (baseCategories.includes(c)) parents[c] = parent;
+  }
+  const categories = withParentCategories(baseCategories, parents);
   const lib: LibraryData = {
     products,
     categories,

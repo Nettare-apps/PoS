@@ -14,6 +14,7 @@ import * as ref from './reference/prototype-ref.mjs';
 import {
   customQuote,
   hhPrice,
+  hhRule,
   itemCost,
   isItem,
   isPour,
@@ -21,6 +22,7 @@ import {
   stdMatches,
   stdQuote,
   type HHRule,
+  type HHSetting,
   type MenuItem,
   type Pour,
 } from '../src/engine';
@@ -117,6 +119,8 @@ describe('golden sweep vs the prototype reference', () => {
           expect(q.price, tag).toBe(priceCents(rq.price));
           expect(q.cost, tag).toBe(centsOf(rq.cost));
           expect(q.pricedCost, tag).toBe(centsOf(rq.pricedCost));
+          if (rq.actual == null) expect(q.actual, tag).toBeNull();
+          else expect(q.actual, tag).toBe(rq.actual);
         }
       }
     }
@@ -165,6 +169,7 @@ describe('golden sweep vs the prototype reference', () => {
       { eng: { type: 'off', value: 200, from: 'x' }, ref: { type: 'off', value: 2 } },
       { eng: { type: 'price', value: 900, from: 'x' }, ref: { type: 'price', value: 9 } },
     ];
+    let checked = 0;
     for (const p of lib.products) {
       const rp = rawById.get(p.id)!;
       // base price: the item price, or the pour's first priced serving
@@ -189,6 +194,47 @@ describe('golden sweep vs the prototype reference', () => {
         const theirs = ref.hhPrice(sc.ref, baseDollars, rp);
         expect(mine, `${p.id} hh ${sc.eng.type}`).toBe(theirs == null ? null : Math.round(theirs * 100));
       }
+      checked++;
     }
+    // every seed product has a price, so nothing may be skipped silently
+    expect(checked).toBe(377);
+  });
+
+  it('resolves the happy-hour rule (precedence incl. parents) identically on every product', () => {
+    const lib = seedLibrary();
+    const parents = lib.settings.parents;
+    const rawById = new Map(refProducts(true).map((p) => [p.id, p]));
+    // engine values in cents, reference values in dollars — same rules
+    const menusEng: Record<string, HHSetting> = {
+      Spirits: { type: 'pct', value: 10 },
+      Cocktails: { type: 'off', value: 200 },
+      Wine: { type: 'price', value: 3000 },
+      Dinner: { type: 'pct', value: 15 },
+      Food: { type: 'off', value: 100 },
+    };
+    const menusRef = {
+      Spirits: { type: 'pct', value: 10 },
+      Cocktails: { type: 'off', value: 2 },
+      Wine: { type: 'price', value: 30 },
+      Dinner: { type: 'pct', value: 15 },
+      Food: { type: 'off', value: 1 },
+    };
+    let resolved = 0;
+    for (const p of lib.products) {
+      const mine = hhRule(menusEng, parents, p);
+      const theirs = ref.hhRule(menusRef, parents, rawById.get(p.id)!) as {
+        type: string;
+        from: string;
+      } | null;
+      const tag = `${p.id} hhRule`;
+      if (theirs == null) expect(mine, tag).toBeNull();
+      else {
+        expect(mine?.type, tag).toBe(theirs.type);
+        expect(mine?.from, tag).toBe(theirs.from);
+        resolved++;
+      }
+    }
+    // the config covers spirits (via parent), cocktails, wine and food — most of the library
+    expect(resolved).toBeGreaterThan(250);
   });
 });

@@ -101,20 +101,29 @@ export function hhRule(
     return own.type === 'none' ? null : { type: own.type, value: own.value ?? 0, from: 'item' };
   }
   const order = [p.primary, ...p.cats].filter((c): c is string => !!c);
-  const tryCat = (c: string): HHRule | null => {
+  // Prototype parity (tryC, line 1442): a menu rule with any type other than
+  // 'none' STOPS the search — 'none' (or no rule) falls through to the next
+  // menu and then the parents. A stored type that isn't priceable (e.g. a
+  // stray 'inherit') therefore stops the search and yields no discount,
+  // exactly as the prototype prices it.
+  const tryCat = (c: string): HHRule | 'stop' | null => {
     const r = menus[c];
-    return r && (r.type === 'off' || r.type === 'pct' || r.type === 'price')
-      ? { type: r.type, value: r.value ?? 0, from: c }
-      : null;
+    if (!r || !r.type || r.type === 'none') return null;
+    if (r.type === 'off' || r.type === 'pct' || r.type === 'price') {
+      return { type: r.type, value: r.value ?? 0, from: c };
+    }
+    return 'stop';
   };
   for (const c of order) {
     const r = tryCat(c);
+    if (r === 'stop') return null;
     if (r) return r;
   }
   for (const c of order) {
     const par = parents[c];
     if (par) {
       const r = tryCat(par);
+      if (r === 'stop') return null;
       if (r) return r;
     }
   }

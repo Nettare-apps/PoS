@@ -76,6 +76,29 @@ export const hhPrice = (rule, price, p) => {
   if (rule.type === 'price') return isItem(p) ? rule.value : null;
   return null;
 };
+/* hhRule, lines 1438-1446: item rule wins; otherwise the first menu rule over
+ * [primary, ...cats] whose type is truthy and not 'none' STOPS the search
+ * (even if hhPrice can't price it), then the same order over parents. */
+export const hhRule = (menus, parents, p) => {
+  if (!p) return null;
+  if (p.hh && p.hh.type && p.hh.type !== 'inherit') return p.hh.type === 'none' ? null : { ...p.hh, from: 'item' };
+  const order = [p.primary, ...p.cats].filter(Boolean);
+  const tryC = (c) => {
+    const r = menus[c];
+    return r && r.type && r.type !== 'none' ? { ...r, from: c } : null;
+  };
+  for (const c of order) {
+    const r = tryC(c);
+    if (r) return r;
+  }
+  for (const c of order) {
+    if (parents[c]) {
+      const r = tryC(parents[c]);
+      if (r) return r;
+    }
+  }
+  return null;
+};
 export const itemCost = (p, lookup) =>
   (p.recipe || []).reduce((a, r) => {
     const q = lookup(r.pid);

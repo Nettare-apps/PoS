@@ -108,6 +108,27 @@ describe('hhRule (precedence: item, primary menu, other menus, parent menus)', (
   it('returns null with no applicable rule', () => {
     expect(hhRule({}, parents, whisky)).toBeNull();
   });
+  it('a menu rule of "none" falls through to the parent, like a missing rule', () => {
+    const menus = { Whisky: { type: 'none' as const }, Spirits: { type: 'pct' as const, value: 10 } };
+    expect(hhRule(menus, parents, whisky)?.from).toBe('Spirits');
+  });
+  it('other menus beat parent menus (SPEC §14 precedence)', () => {
+    const p = { ...whisky, cats: ['Whisky', 'Staff Picks'], primary: 'Whisky' };
+    const menus = {
+      'Staff Picks': { type: 'pct' as const, value: 10 },
+      Spirits: { type: 'pct' as const, value: 20 },
+    };
+    expect(hhRule(menus, parents, p)?.from).toBe('Staff Picks');
+  });
+  it('a stored menu rule the engine cannot price stops the search with no discount (prototype parity)', () => {
+    // The library UI never stores 'inherit' on a menu, but the prototype's
+    // tryC stops on any non-'none' type and then prices nothing — so must we.
+    const menus = {
+      Whisky: { type: 'inherit' as const },
+      Spirits: { type: 'pct' as const, value: 10 },
+    };
+    expect(hhRule(menus, parents, whisky)).toBeNull();
+  });
 });
 
 describe('hhPrice', () => {

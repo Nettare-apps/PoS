@@ -68,9 +68,12 @@ export class LibraryService {
   }
 
   pubState(working?: LibraryData): PubState {
-    const w = working ?? this.store.getDraft();
-    const draft = this.store.getDraft();
-    const published = this.store.getPublished().data;
+    // Save and publish normalize what they store, so the working copy must be
+    // normalized the same way before comparing — otherwise a working copy
+    // that normalization would change reads as "dirty" forever.
+    const w = normalizeLibrary(deepClone(working ?? this.store.getDraft()));
+    const draft = normalizeLibrary(this.store.getDraft());
+    const published = normalizeLibrary(this.store.getPublished().data);
     return {
       dirty: !deepEqual(w, draft),
       unpub: !deepEqual(draft, published),
@@ -97,8 +100,11 @@ export class LibraryService {
       by: ctx.user,
       data: normalized,
     };
-    this.store.setDraft(deepClone(normalized));
+    // Append the revision before touching the draft: if the store rejects the
+    // revision, nothing has changed. (A persistent adapter should still wrap
+    // revision + draft in one transaction.)
     this.store.appendPublished(revision);
+    this.store.setDraft(deepClone(normalized));
     this.log.append('library_publish', ctx, { rev });
     return revision;
   }

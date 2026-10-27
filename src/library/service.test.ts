@@ -94,6 +94,45 @@ describe('LibraryService', () => {
     expect((service.published().products[0] as Pour).cost.frontline).toBe(2170);
   });
 
+  it('logs every library action to the event log (SPEC §15)', () => {
+    const { service, log } = makeService();
+    service.saveDraft(mkLib(2500), morgan);
+    service.publish(mkLib(2500), morgan);
+    service.revertToPublished(morgan);
+    service.revertToRevision(1, morgan);
+    expect(log.ofType('library_save_draft')).toHaveLength(1);
+    // revertToRevision republishes, so two publish events in all
+    expect(log.ofType('library_publish')).toHaveLength(2);
+    const reverts = log.ofType('library_revert');
+    expect(reverts).toHaveLength(2);
+    expect(reverts[0]?.data).toMatchObject({ toRev: 2 });
+    expect(reverts[1]?.data).toMatchObject({ toRev: 1, publishedAs: 3 });
+    for (const e of log.all()) expect(e.user).toBe('2222');
+  });
+
+  it('a failed publish leaves the draft and the log untouched', () => {
+    const store = new MemoryLibraryStore(mkLib());
+    const log = new MemoryEventLog();
+    const failing = Object.create(store) as MemoryLibraryStore;
+    failing.appendPublished = () => {
+      throw new Error('store down');
+    };
+    const service = new LibraryService(failing, log);
+    service.saveDraft(mkLib(2500), morgan);
+    expect(() => service.publish(mkLib(3000), morgan)).toThrow('store down');
+    expect((service.draft().products[0] as Pour).cost.frontline).toBe(2500);
+    expect(log.ofType('library_publish')).toHaveLength(0);
+    expect(service.history()).toHaveLength(1);
+  });
+
+  it('pubState is not fooled by normalization: a working copy that only normalization changes is clean', () => {
+    const { service } = makeService();
+    const working = mkLib();
+    working.products[0]!.primary = 'Gone'; // normalization snaps this back to Whisky
+    service.saveDraft(working, morgan);
+    expect(service.pubState(working)).toMatchObject({ dirty: false });
+  });
+
   it('normalizes on save: primary snaps back into cats, serving bases fill in', () => {
     const { service } = makeService();
     const lib = mkLib();
@@ -109,11 +148,16 @@ describe('LibraryService', () => {
 describe('MemoryEventLog', () => {
   it('appends frozen events with ts/type/user/tab and never exposes mutation', () => {
     const log = new MemoryEventLog(() => new Date('2026-10-27T03:00:00Z'));
-    const e = log.append('library_save_draft', { user: '1111', tab: null }, { note: 'x' });
+    const payload = { note: 'x', nested: { amount: 100 } };
+    const e = log.append('library_save_draft', { user: '1111', tab: null }, payload);
     expect(e).toMatchObject({ type: 'library_save_draft', user: '1111', tab: null });
     expect(e.ts).toBe('2026-10-27T03:00:00.000Z');
     expect(Object.isFrozen(e)).toBe(true);
     expect(Object.isFrozen(e.data)).toBe(true);
+    // an appended event is detached from the caller's objects and deep-frozen
+    payload.nested.amount = 999;
+    expect((e.data as { nested: { amount: number } }).nested.amount).toBe(100);
+    expect(Object.isFrozen(e.data['nested'])).toBe(true);
     const all = log.all();
     expect(all).toHaveLength(1);
     // the returned list is a copy; the log itself has no delete or update

@@ -52,6 +52,27 @@ describe('seedLibrary', () => {
     expect(bankNote.cost.frontline).toBe(2170);
   });
 
+  it('base menu prices are whole dollars (SPEC §5 Rounding)', () => {
+    for (const i of items) expect(i.price % 100, `${i.id} ${i.name}`).toBe(0);
+  });
+
+  it('every pour has sane pricing inputs (size, scale, servings, targets)', () => {
+    // The golden sweep compares two implementations over the same JSON, so it
+    // would agree on corrupt data — this guards the data itself.
+    for (const p of pours) {
+      expect(p.size, `${p.id} size`).toBeGreaterThan(0);
+      expect(p.scale.min, `${p.id} scale`).toBeGreaterThan(0);
+      expect(p.scale.max, `${p.id} scale`).toBeGreaterThanOrEqual(p.scale.min);
+      expect(p.servings.length, `${p.id} servings`).toBeGreaterThan(0);
+      for (const s of p.servings) {
+        expect(s.qty, `${p.id} serving qty`).toBeGreaterThan(0);
+        expect(s.target, `${p.id} serving target`).toBeGreaterThan(0);
+      }
+      const costs = Object.values(p.cost).filter((c): c is number => c != null);
+      expect(costs.length, `${p.id} has a cost on file`).toBeGreaterThan(0);
+    }
+  });
+
   it('every serving has a basis and every primary is one of the product’s categories', () => {
     for (const p of pours) for (const s of p.servings) expect(s.basis).toBeTruthy();
     for (const p of lib.products) if (p.primary) expect(p.cats).toContain(p.primary);
