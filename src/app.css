@@ -1,0 +1,24 @@
+:root {
+  color-scheme: light dark;
+  font-family: system-ui, -apple-system, sans-serif;
+}
+body {
+  margin: 0;
+}
+.wrap {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 24px 16px;
+}
+.muted {
+  opacity: 0.7;
+}
+table {
+  border-collapse: collapse;
+}
+td,
+th {
+  text-align: left;
+  padding: 4px 16px 4px 0;
+  border-bottom: 1px solid color-mix(in srgb, currentColor 20%, transparent);
+}
