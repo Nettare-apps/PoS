@@ -26,8 +26,10 @@ The production build lives alongside the handoff: TypeScript, Vite + React, mone
 | Path | What it is |
 |---|---|
 | `src/engine/` | The pricing engine (SPEC §5) and happy hour (§14) as pure functions. Each cites the prototype lines it is faithful to. |
-| `src/library/` | The library's draft → publish → revert lifecycle with full publish history, the seed loader, normalization. |
-| `src/events/` | The append-only event log (§15). |
+| `src/library/` | The library's draft → publish → revert lifecycle with full publish history, the seed loader, normalization, category cascades. |
+| `src/events/` | The append-only event log (§15), with the committed/tap split. |
+| `src/ui/` | The Library app (SPEC §7): products, modifiers and happy hour editors, publish bar with revision history, activity view. |
+| `src/storage/` | On-device (localStorage) adapters — a stand-in until the backend decision; swapping in the real backend is an adapter change. |
 | `tests/reference/prototype-ref.mjs` | The prototype's float formulas, ported verbatim — the golden reference. |
 | `tests/golden.sweep.test.ts` | Verifies the cents engine against that reference across the entire seed library. |
 | `supabase/migrations/` | **Draft** schema, not applied anywhere; no Supabase project exists yet. |
