@@ -43,37 +43,62 @@ function hmToMs(hm: string): number {
   return ((h ?? 0) * 60 + (m ?? 0)) * 60000;
 }
 
+const DAY_MS = 24 * 60 * 60000;
+
 /**
- * The day's window in ms since midnight, or null when the day has no happy
- * hour (prototype hhWindow, lines 1430-1434).
- *
- * TODO(Q7): windows cannot cross midnight — an end before the start is never
- * active, matching the prototype. Nettare's business day runs to 5 am, so
- * this is an open question for Conner.
+ * The day's window in ms since that day's midnight, or null when the day has
+ * no happy hour. A window may cross midnight (Conner, 2026-10-27 — not
+ * needed today, built for later): an end strictly before the start runs into
+ * the next day, so endMs can exceed 24h. An end equal to the start is an
+ * empty window, never active.
  */
 export function hhWindow(schedule: HHSchedule, day: LocalTime['day']): { startMs: number; endMs: number } | null {
   const sch = schedule[day];
   if (!sch || !sch[0] || !sch[1]) return null;
-  return { startMs: hmToMs(sch[0]), endMs: hmToMs(sch[1]) };
+  const startMs = hmToMs(sch[0]);
+  let endMs = hmToMs(sch[1]);
+  if (endMs < startMs) endMs += DAY_MS;
+  return { startMs, endMs };
 }
 
 export interface HHStatus {
   active: boolean;
   /** within 5 minutes of the window's end, before or after (SPEC §14) */
   near: boolean;
-  /** ms until the window ends; negative after the end; 0 when no window */
+  /** ms until the governing window ends; negative after the end; 0 when no window */
   leftMs: number;
+  /**
+   * Window bounds relative to TODAY's midnight. For yesterday's window
+   * spilling past midnight, startMs is negative and endMs is the morning end
+   * (e.g. 02:00 → 7_200_000), so endMs % DAY always formats the clock time.
+   */
   startMs?: number;
   endMs?: number;
 }
 
-/** Where "now" stands against the window (prototype hhNow, lines 1435-1436). */
+/**
+ * Where "now" stands (prototype hhNow semantics, lines 1435-1436, extended
+ * for midnight-crossing windows): both today's window and yesterday's window
+ * spilling past midnight are considered; an active window governs, then a
+ * near one, then today's.
+ */
 export function hhStatus(schedule: HHSchedule, t: LocalTime): HHStatus {
-  const w = hhWindow(schedule, t.day);
-  if (!w) return { active: false, near: false, leftMs: 0 };
-  const active = t.ms >= w.startMs && t.ms < w.endMs;
-  const near = Math.abs(t.ms - w.endMs) <= 5 * 60000 && t.ms >= w.startMs;
-  return { active, near, leftMs: w.endMs - t.ms, startMs: w.startMs, endMs: w.endMs };
+  const windows: { startMs: number; endMs: number }[] = [];
+  const today = hhWindow(schedule, t.day);
+  if (today) windows.push(today);
+  const yesterday = hhWindow(schedule, ((t.day + 6) % 7) as LocalTime['day']);
+  if (yesterday && yesterday.endMs > DAY_MS) {
+    windows.push({ startMs: yesterday.startMs - DAY_MS, endMs: yesterday.endMs - DAY_MS });
+  }
+  if (!windows.length) return { active: false, near: false, leftMs: 0 };
+  const statuses = windows.map((w) => ({
+    active: t.ms >= w.startMs && t.ms < w.endMs,
+    near: Math.abs(t.ms - w.endMs) <= 5 * 60000 && t.ms >= w.startMs,
+    leftMs: w.endMs - t.ms,
+    startMs: w.startMs,
+    endMs: w.endMs,
+  }));
+  return statuses.find((s) => s.active) ?? statuses.find((s) => s.near) ?? statuses[0]!;
 }
 
 /** A resolved rule: what applies to a product and where it came from. */
@@ -156,9 +181,10 @@ export interface HHQuote {
   /** set when happy-hour pricing was applied */
   hh?: { type: HHRule['type']; value: number; from: string };
   /**
-   * The base price whenever a rule *would* change it, in or out of the
-   * window — the prototype sets basePrice the same way (line 1463); the
-   * reliable in-window marker is `inWindow`, not `base` (SPEC §15 hhWindow).
+   * The base price, present only when happy hour actually touched the line
+   * (applied, or offered by the prompt). The prototype also set basePrice on
+   * rings wholly outside the window, which polluted the event log; fixed on
+   * both sides 2026-10-27. The reliable in-window marker stays `inWindow`.
    */
   base?: Cents;
   /** true when the ring happened inside the window (logged as hhWindow) */
@@ -186,11 +212,12 @@ export function hhApply(
   if (!rule) return { price: basePriceCents, inWindow };
   const hp = hhPrice(rule, basePriceCents, isItem(p));
   if (hp == null || hp === basePriceCents) return { price: basePriceCents, inWindow };
+  const ask = st.near ? { hhPrice: hp, basePrice: basePriceCents, leftMs: st.leftMs } : undefined;
   return {
     price: st.active ? hp : basePriceCents,
     hh: st.active ? { type: rule.type, value: rule.value, from: rule.from } : undefined,
-    base: basePriceCents,
+    base: st.active || ask ? basePriceCents : undefined,
     inWindow,
-    ask: st.near ? { hhPrice: hp, basePrice: basePriceCents, leftMs: st.leftMs } : undefined,
+    ask,
   };
 }

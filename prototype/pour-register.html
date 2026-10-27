@@ -1,3 +1,11 @@
+<meta charset="utf-8">
+<!-- 2026-10-27 fixes (production handoff repo): charset declared (plain-HTTP serving rendered
+     every non-ASCII glyph as mojibake); allergies no longer dropped on the join-tables path;
+     discarding pending items cancels their orphaned approval requests; happy-hour basePrice only
+     set when HH touches the line, and Repeat no longer copies hhAsked; oz->mL toggle converts at
+     0.1 mL instead of whole mL; library events no longer carry a stale tab id; queue-approved
+     removals now carry per-line off amounts and the close-out attributes them to the requester,
+     with net sales following the tab's server. Behavior is otherwise version 39. -->
 <title>Pour Register</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -68,6 +76,7 @@ button{cursor:pointer}
   .reg.sheetmin{padding-bottom:80px}
   .reg.sheetmin>.side{height:56px}
   .reg.sheetmin #ticket .tscroll,.reg.sheetmin #ticket .tfoot,.reg.sheetmin #ticket .ph>.muted,.reg.sheetmin #ticket .tnote,.reg.sheetmin #ticket #te-open,.reg.sheetmin #ticket .ph+p{display:none}
+  #ticket .ph>.muted{flex-basis:100%;margin-top:-2px}
   #ticket .tfoot .tot{grid-template-columns:1fr auto 1fr auto;font-size:12px}
   #ticket .tfoot .tot .big{font-size:16px}
   .sendbar .btn{padding:7px 4px;font-size:13px}
@@ -853,7 +862,7 @@ function renderPour(p){
   </div>`;
   $('#keys').querySelectorAll('[data-k]').forEach(b=>b.onclick=()=>keyIn(b.dataset.k));
   $('#pour').querySelectorAll('[data-ru]').forEach(b=>b.onclick=()=>{ const from=ringUnit(), to=b.dataset.ru; if(from===to) return;
-    const v=parseFloat(S.entry)||0; if(v){ const ml= from==='oz' ? v*OZ : v; S.entry = to==='oz' ? String(+(ml/OZ).toFixed(2)) : String(Math.round(ml)); }
+    const v=parseFloat(S.entry)||0; if(v){ const ml= from==='oz' ? v*OZ : v; S.entry = to==='oz' ? String(+(ml/OZ).toFixed(2)) : String(+ml.toFixed(1)); }
     S.ringUnit = to===S.unit ? null : to; logEv('ring_unit',{from, to, pid:p.id}); renderPour(p); });
   if($('#addc')) $('#addc').onclick=()=>addCustom();
   $('#keys').querySelectorAll('[data-snap]').forEach(b=>b.onclick=()=>addStd(p, +b.dataset.snap));
@@ -1031,15 +1040,18 @@ function decideRequest(reqId, approve){
     S.requests=S.requests.filter(x=>x.id!==reqId);
     logEv(approve?'check_approve':'check_deny',{req:reqId, kind:q.kind, reason:q.reason, requestedBy:q.by, waitedSec:Math.round((Date.parse(now)-Date.parse(q.at))/1000), tab:q.tabId, check:c?c.label:null, off:c&&approve?+checkCalc(h,c).off.toFixed(2):null});
     return; }
+  const detail=[];
   lines.forEach(({l, tab})=>{
+    const gross=lineGross(l);
     if(approve){
-      if(q.kind==='void' && !isSent(l)){ if(tab) tab.lines=tab.lines.filter(x=>x!==l); else S.quick=S.quick.filter(x=>x!==l); return; }
+      if(q.kind==='void' && !isSent(l)){ if(tab) tab.lines=tab.lines.filter(x=>x!==l); else S.quick=S.quick.filter(x=>x!==l); detail.push({pid:l.pid, line:l.label, qty:qtyOf(l), gross, off:gross}); return; }
       l.adj={...l.adj, state:'applied', approvedBy:S.user, approvedAt:now};
-    } else { delete l.adj; l.adjDenied={kind:q.kind, by:S.user, at:now}; }
+      detail.push({pid:l.pid, line:l.label, qty:qtyOf(l), gross, off:adjOff(l.adj, gross)});
+    } else { delete l.adj; l.adjDenied={kind:q.kind, by:S.user, at:now}; detail.push({pid:l.pid, line:l.label, qty:qtyOf(l), gross, off:0}); }
   });
   S.requests=S.requests.filter(x=>x.id!==reqId);
   logEv(approve?'adjust_approve':'adjust_deny',{req:reqId, kind:q.kind, reason:q.reason, requestedBy:q.by, waitedSec:Math.round((Date.parse(now)-Date.parse(q.at))/1000), tab:q.tabId,
-    lines:lines.map(({l})=>({pid:l.pid, line:l.label, qty:qtyOf(l), gross:lineGross(l)}))});
+    lines:detail});
 }
 /* approvals: managers see the queue in the nav and get it on sign-in */
 function inboxCounts(){ const a=isMgr(S.user)?S.requests.length:0, t=S.transfers.filter(x=>x.to===S.user).length; return {a, t, n:a+t}; }
@@ -1350,9 +1362,12 @@ function renderShift(){
   const u=staffBy(S.user); if(!u){ $('#app').innerHTML=''; return; }
   const since=S.clockAt[u.pin]||null, inShift=e=>!since||e.ts>=since;
   const evs=S.log.filter(e=>e.user===u.pin && inShift(e));
-  const closes=evs.filter(e=>['close_tab','close_ticket','close_check'].includes(e.type));
+  /* sales belong to the tab's server (the opener), not whoever pressed Close (Conner, 2026-10-27) */
+  const closes=S.log.filter(e=>['close_tab','close_ticket','close_check'].includes(e.type) && inShift(e) && (e.server||e.user)===u.pin);
   const net=closes.reduce((a,e)=>a+(e.total||0),0), chkOff=closes.reduce((a,e)=>a+(e.off||0),0);
-  const adjSum=k=>evs.filter(e=>e.type==='adjust_'+k).reduce((a,e)=>a+(e.lines||[]).reduce((x,l)=>x+(l.off||0),0),0);
+  /* removal amounts follow the requester: self-applied adjust_* events plus queue approvals of their requests */
+  const adjSum=k=>evs.filter(e=>e.type==='adjust_'+k).reduce((a,e)=>a+(e.lines||[]).reduce((x,l)=>x+(l.off||0),0),0)
+    + S.log.filter(e=>e.type==='adjust_approve'&&e.kind===k&&e.requestedBy===u.pin&&inShift(e)).reduce((a,e)=>a+(e.lines||[]).reduce((x,l)=>x+(l.off||0),0),0);
   const adjN=k=>evs.filter(e=>e.type==='adjust_'+k).length + S.log.filter(e=>e.type==='adjust_approve'&&e.kind===k&&e.requestedBy===u.pin&&inShift(e)).length;
   const rings=evs.filter(e=>e.type==='ring_in').length;
   const mine=S.tabs.filter(t=>t.server===u.pin), out=S.transfers.filter(x=>x.from===u.pin);
@@ -1455,12 +1470,13 @@ const hhLabel = r => !r ? '' : r.type==='off' ? '$'+r.value+' off' : r.type==='p
 const clock12 = t => new Date(t).toLocaleTimeString([], {hour:'numeric', minute:'2-digit'});
 /* called by addLine: prices the line and, near the end of the window, asks */
 function hhPriceLine(l){
-  if(l.basePrice!=null){ l.price=l.basePrice; } delete l.hh; delete l.hhWin;
+  if(l.basePrice!=null){ l.price=l.basePrice; } delete l.hh; delete l.hhWin; delete l.basePrice;
   const p=lprod(l.pid), rule=hhRule(S.live, p), st=hhNow(S.live);
   if(st.active) l.hhWin=true;
   if(!rule) return null;
   const hp=hhPrice(rule, l.price, p); if(hp==null || hp===l.price) return null;
-  l.basePrice=l.price;
+  /* basePrice marks a line happy hour actually touched (applied or prompted), so reporting can trust it */
+  if(st.active || st.near) l.basePrice=l.price;
   if(st.active) { l.price=hp; l.hh={type:rule.type, value:rule.value, from:rule.from}; }
   return st.near ? {hp, base:l.basePrice, st, rule} : null;
 }
@@ -1682,7 +1698,11 @@ function guardLeave(next){
   $('#pp-stay').onclick=()=>{ logEv('pending_stay',{items:n}); close(); };
   $('#pp-bg').addEventListener('click',e=>{ if(e.target.id==='pp-bg'){ logEv('pending_stay',{items:n}); close(); } });
   $('#pp-discard').onclick=()=>{ logEv('discard_pending',{items:n, lines:pend.map(l=>({pid:l.pid, label:l.label, qty:qtyOf(l), total:lineTotal(l)}))});
-    S.ticket=S.ticket.filter(l=>!pend.includes(l)); S.modLine=null; S.sel=null; S.custom=false; close(); next(); };
+    const ids=new Set(pend.map(l=>l.id).filter(Boolean));
+    S.ticket=S.ticket.filter(l=>!pend.includes(l)); S.modLine=null; S.sel=null; S.custom=false;
+    /* a discarded line takes its pending approval request with it */
+    S.requests.slice().forEach(q=>{ if(q.scope!=='check'){ q.lineIds=q.lineIds.filter(id=>!ids.has(id)); if(!q.lineIds.length) cancelRequest(q.id); } });
+    renderApprBtn(); close(); next(); };
   $('#pp-stay').focus();
 }
 function renderSendPrompt(){
@@ -1775,7 +1795,7 @@ function renderTicket(){
   el.querySelectorAll('[data-qd]').forEach(b=>b.onclick=()=>step(+b.dataset.qd, -1));
   $('#repeat').onclick=()=>{
     const src = S.modLine!=null ? S.ticket[S.modLine] : (vis.length ? vis[vis.length-1][0] : null); if(!src) return;
-    const copy = JSON.parse(JSON.stringify(src)); copy.seats=[]; copy.repeatOf=src.at; delete copy.adj; delete copy.adjDenied; delete copy.id; delete copy.at; delete copy.status; delete copy.firedAt; delete copy.heldAt; delete copy.part; delete copy.chk;
+    const copy = JSON.parse(JSON.stringify(src)); copy.seats=[]; copy.repeatOf=src.at; delete copy.adj; delete copy.adjDenied; delete copy.id; delete copy.at; delete copy.status; delete copy.firedAt; delete copy.heldAt; delete copy.part; delete copy.chk; delete copy.hhAsked;
     S.modLine=null; addLine(copy); S.sel=null; S.custom=false; renderLeft();
   };
   el.querySelectorAll('[data-lsplit]').forEach(b=>b.onclick=()=>{ const l=S.ticket[+b.dataset.lsplit]; if(l) openSplitItem(l); });
@@ -2087,7 +2107,8 @@ const TAB_EVENTS = ['check_move_item','split_by_seat','check_add','check_combine
 function logEv(type, data={}){
   const ts=new Date().toISOString();
   if(TAB_EVENTS.includes(type)){ const t=S.tabs.find(x=>x.id===S.activeTab); if(t) t.modified=ts; else S.quickMod=ts; }
-  S.log.push({ts, type, user:S.user||null, tab:S.activeTab||null, ...data});
+  /* library actions aren't tab activity: don't stamp them with whatever tab was last open */
+  S.log.push({ts, type, user:S.user||null, tab:(S.view==='library'?null:S.activeTab)||null, ...data});
   if(S.log.length>LOG_CAP) S.log.splice(0, S.log.length-LOG_CAP);
   store.set('log', S.log);
 }
@@ -2662,7 +2683,7 @@ function renderGuestPrompt(){
     S.guestPrompt=null; renderGuestPrompt();
     if(!t) openTab([], n, g);
     else if(n<=max) openTab([t.id], n, g);
-    else { S.join={anchor:t.id, guests:n, sel:[t.id], confirm:false, name:g.name, notes:g.notes}; renderFloorMap(); renderJoinBar(); renderFloorSide(); }
+    else { S.join={anchor:t.id, guests:n, sel:[t.id], confirm:false, name:g.name, notes:g.notes, allergies:(g.allergies||[]).slice()}; renderFloorMap(); renderJoinBar(); renderFloorSide(); }
   }
   $('#gp-ok').onclick=ok;
   $('#gp-seat').onclick=()=>{ const n=g.n; if(!(n>0)) return; S.guestPrompt=null; renderGuestPrompt(); openTab([t.id], n, g); };

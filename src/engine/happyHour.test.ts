@@ -65,6 +65,22 @@ describe('hhStatus (the schedule window)', () => {
   it('days without a window are never active', () => {
     expect(hhStatus(sch, at(1, 17, 0))).toMatchObject({ active: false, near: false });
   });
+  it('a window may cross midnight (Conner, 2026-10-27): Saturday 22:00–02:00 is active into Sunday morning', () => {
+    const sch = { 6: ['22:00', '02:00'] as [string, string], 0: ['17:00', '21:00'] as [string, string] };
+    expect(hhStatus(sch, at(6, 21, 59)).active).toBe(false);
+    expect(hhStatus(sch, at(6, 23, 30))).toMatchObject({ active: true, near: false });
+    expect(hhStatus(sch, at(6, 23, 30)).leftMs).toBe(2.5 * 3600000);
+    // Sunday 1am is still Saturday's window; Sunday's own window is separate
+    expect(hhStatus(sch, at(0, 1, 0))).toMatchObject({ active: true, near: false });
+    expect(hhStatus(sch, at(0, 1, 0)).endMs).toBe(2 * 3600000);
+    expect(hhStatus(sch, at(0, 1, 56))).toMatchObject({ active: true, near: true });
+    expect(hhStatus(sch, at(0, 2, 3))).toMatchObject({ active: false, near: true });
+    expect(hhStatus(sch, at(0, 2, 6)).near).toBe(false);
+    expect(hhStatus(sch, at(0, 18, 0))).toMatchObject({ active: true });
+    // end equal to start is an empty window, never a 24h one
+    expect(hhStatus({ 4: ['16:00', '16:00'] }, at(4, 16, 0)).active).toBe(false);
+  });
+
   it('matches the SPEC §14 table', () => {
     expect(hhStatus(sch, at(5, 17, 29)).active).toBe(true); // Fri to 17:30
     expect(hhStatus(sch, at(5, 17, 30)).active).toBe(false);
@@ -176,9 +192,10 @@ describe('hhApply (ring-in pricing)', () => {
     expect(q.inWindow).toBe(false);
     expect(q.ask).toMatchObject({ hhPrice: 1280, basePrice: 1600 });
   });
-  it('outside the window: regular price, but base is still reported when a rule would apply (prototype parity)', () => {
+  it('outside the window: regular price, and NO base marker — happy hour left no trace (bug fix, 2026-10-27)', () => {
     const q = hhApply(cfg, {}, spritz, 1600, at(2, 17, 0));
-    expect(q).toMatchObject({ price: 1600, inWindow: false, base: 1600 });
+    expect(q).toMatchObject({ price: 1600, inWindow: false });
+    expect(q.base).toBeUndefined();
     expect(q.hh).toBeUndefined();
     expect(q.ask).toBeUndefined();
   });

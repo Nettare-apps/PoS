@@ -9,7 +9,7 @@ export class MemoryLibraryStore implements LibraryStore {
 
   /** Seeds revision 1 as published, with the draft equal to it. */
   constructor(initial: LibraryData, at = new Date(0).toISOString()) {
-    this.revisions = [{ rev: 1, at, by: null, data: deepClone(initial) }];
+    this.revisions = [{ rev: 1, at, by: null, source: 'publish', data: deepClone(initial) }];
     this.draft = deepClone(initial);
   }
 

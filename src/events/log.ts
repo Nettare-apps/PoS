@@ -1,8 +1,13 @@
 import type { EventContext, PourEvent } from './types';
 
-/** Append-only writer. There is deliberately no update or delete. */
+/**
+ * Append-only writer. There is deliberately no update or delete.
+ * `tap` records a raw UI press (committed:false — kept ~30 days during
+ * testing); `append` records a committed action (kept forever).
+ */
 export interface EventLog {
   append(type: string, ctx: EventContext, data?: Record<string, unknown>): PourEvent;
+  tap(type: string, ctx: EventContext, data?: Record<string, unknown>): PourEvent;
 }
 
 /** Read side, for reporting and tests. */
@@ -30,11 +35,20 @@ export class MemoryEventLog implements EventLog, EventSource {
   constructor(private clock: () => Date = () => new Date()) {}
 
   append(type: string, ctx: EventContext, data: Record<string, unknown> = {}): PourEvent {
+    return this.push(type, ctx, data, true);
+  }
+
+  tap(type: string, ctx: EventContext, data: Record<string, unknown> = {}): PourEvent {
+    return this.push(type, ctx, data, false);
+  }
+
+  private push(type: string, ctx: EventContext, data: Record<string, unknown>, committed: boolean): PourEvent {
     const event: PourEvent = deepFreeze({
       ts: this.clock().toISOString(),
       type,
       user: ctx.user,
       tab: ctx.tab ?? null,
+      committed,
       data: structuredClone(data),
     });
     this.events.push(event);

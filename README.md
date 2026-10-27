@@ -6,7 +6,7 @@ This packet carries the POS prototype work into a Claude Code project.
 |---|---|
 | `CLAUDE.md` | Instructions Claude Code reads automatically: context, how Conner works, the non-negotiables. Put it at the repo root. |
 | `SPEC.md` | The full product spec and decisions log. |
-| `prototype/pour-register.html` | The clickable prototype (version 39) and the reference for behavior. Open it in a browser. Test PINs are 1111 (staff) and 2222 (manager). |
+| `prototype/pour-register.html` | The clickable prototype (version 39) and the reference for behavior. Open it in a browser. Test PINs are 1111 (staff) and 2222 (manager). Eight small bug fixes were applied on 2026-10-27 (listed in the comment at the top of the file); behavior is otherwise version 39. |
 | `data/pos_data.json` | Seed library: 376 products, 18 categories, starting counts (377 at handoff; the Lunch Burger was consolidated on 2026-10-27 — see `data/README.md`). |
 | `data/sources/` | The scripts and extracted data used to build the seed. |
 | `data/README.md` | Notes on the seed data. |

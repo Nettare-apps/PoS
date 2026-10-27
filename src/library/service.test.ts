@@ -76,9 +76,19 @@ describe('LibraryService', () => {
     expect(service.history().map((r) => r.rev)).toEqual([1, 2, 3]);
     const back = service.revertToRevision(2, morgan);
     expect(back.rev).toBe(4);
+    expect(back.source).toBe('revert');
     expect((service.published().products[0] as Pour).cost.frontline).toBe(2500);
     expect(service.history()).toHaveLength(4);
     expect(() => service.revertToRevision(99, morgan)).toThrow();
+  });
+
+  it('records where each publish came from, so quick edits show in history (Conner, 2026-10-27)', () => {
+    const { service, log } = makeService();
+    service.publish(mkLib(2500), morgan);
+    service.publish(mkLib(3000), morgan, 'quick_edit');
+    expect(service.history().map((r) => r.source)).toEqual(['publish', 'publish', 'quick_edit']);
+    expect(service.publishedRevision().source).toBe('quick_edit');
+    expect(log.ofType('library_publish').map((e) => e.data['source'])).toEqual(['publish', 'quick_edit']);
   });
 
   it('pubState mirrors the prototype publish bar (dirty / unpub / diffLive)', () => {
@@ -164,6 +174,15 @@ describe('MemoryEventLog', () => {
     (all as unknown[]).pop();
     expect(log.all()).toHaveLength(1);
     const keys = Object.getOwnPropertyNames(Object.getPrototypeOf(log)).filter((k) => k !== 'constructor');
-    expect(keys.sort()).toEqual(['all', 'append', 'ofType']);
+    expect(keys.sort()).toEqual(['all', 'append', 'ofType', 'push', 'tap']);
+  });
+
+  it('separates committed actions from raw UI taps (Conner, 2026-10-27: log every press; taps discardable after ~30 days)', () => {
+    const log = new MemoryEventLog();
+    const action = log.append('ring_in', { user: '1111' }, { pid: 'pb42' });
+    const press = log.tap('keypad_digit', { user: '1111' }, { key: '7' });
+    expect(action.committed).toBe(true);
+    expect(press.committed).toBe(false);
+    expect(log.all().filter((e) => e.committed)).toHaveLength(1);
   });
 });

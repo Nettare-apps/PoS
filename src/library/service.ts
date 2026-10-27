@@ -4,10 +4,13 @@
  * Invariants:
  * - The register reads ONLY the published library (`published()`).
  * - Edits are drafts until published.
- * - Every publish is kept as a numbered revision, so a publish can be
- *   reverted to any earlier revision (Q3 default: keep history — a revert
- *   publishes the old revision's data as a NEW revision; history is never
- *   rewritten).
+ * - Every publish is kept as a numbered revision, whatever its source
+ *   (normal publish, quick edit, revert), so a publish can be reverted to
+ *   any earlier revision — a revert publishes the old revision's data as a
+ *   NEW revision; history is never rewritten.
+ * - Retention (Conner, 2026-10-27): the storage layer keeps revisions for
+ *   30 days (never pruning the current published one). The in-memory store
+ *   keeps everything.
  * - "Discard edits" (working copy ← draft) is a client-side concern; the
  *   domain holds the draft and the published revisions.
  */
@@ -16,10 +19,18 @@ import type { EventContext } from '../events/types';
 import { deepClone, deepEqual, normalizeLibrary } from './normalize';
 import type { LibraryData } from './types';
 
+/**
+ * Where a published revision came from (Conner, 2026-10-27: "Anything
+ * published should be recorded regardless of the source. I'd like to be able
+ * to see which ones came from quick edit.")
+ */
+export type PublishSource = 'publish' | 'quick_edit' | 'revert';
+
 export interface PublishedRevision {
   rev: number;
   at: string;
   by: string | null;
+  source: PublishSource;
   data: LibraryData;
 }
 
@@ -90,14 +101,17 @@ export class LibraryService {
   /**
    * Publish the working copy: it becomes both the draft and the published
    * library, as a new revision (prototype pb-pub, lines 1838-1843).
+   * `source` marks where the publish came from, so quick edits can be found
+   * in the history and the log.
    */
-  publish(data: LibraryData, ctx: EventContext): PublishedRevision {
+  publish(data: LibraryData, ctx: EventContext, source: PublishSource = 'publish'): PublishedRevision {
     const normalized = normalizeLibrary(deepClone(data));
     const rev = this.store.getPublished().rev + 1;
     const revision: PublishedRevision = {
       rev,
       at: this.clock().toISOString(),
       by: ctx.user,
+      source,
       data: normalized,
     };
     // Append the revision before touching the draft: if the store rejects the
@@ -105,7 +119,7 @@ export class LibraryService {
     // revision + draft in one transaction.)
     this.store.appendPublished(revision);
     this.store.setDraft(deepClone(normalized));
-    this.log.append('library_publish', ctx, { rev });
+    this.log.append('library_publish', ctx, { rev, source });
     return revision;
   }
 
@@ -127,7 +141,7 @@ export class LibraryService {
   revertToRevision(rev: number, ctx: EventContext): PublishedRevision {
     const target = this.store.history().find((r) => r.rev === rev);
     if (!target) throw new Error(`No published revision ${rev}`);
-    const republished = this.publish(deepClone(target.data), ctx);
+    const republished = this.publish(deepClone(target.data), ctx, 'revert');
     this.log.append('library_revert', ctx, { toRev: rev, publishedAs: republished.rev });
     return republished;
   }

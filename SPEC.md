@@ -223,7 +223,7 @@ Approval queue entry: `{id, scope?: 'check', tabId, chkId?, lineIds[], kind, rea
 - Voided items are never made, so they never deplete. Comps and discounts deplete.
 - Waste is reconciled through inventory counts, not assumed.
 - **86:** a product at zero is non-interactable unless manually marked available.
-- **Quick edit (long-press a product):** count, available or 86, price and cost. Quick edits should be rare, so each one is flagged and logged, and must be easy to find in reports.
+- **Quick edit (long-press a product):** count, available or 86, price and cost. Quick edits should be rare, so each one is flagged and logged, and must be easy to find in reports. A quick edit to price or cost goes live immediately and is recorded as a published revision marked quick-edit (2026-10-27).
 
 ---
 
@@ -235,7 +235,10 @@ Approval queue entry: `{id, scope?: 'check', tabId, chkId?, lineIds[], kind, rea
   - Revert to published.
   - Save draft.
   - Publish.
-  - The register shows a banner when the draft differs from what is published.
+  - The register shows a banner when the saved draft differs from what is published (2026-10-27); unsaved
+    edits are the editing device's concern.
+  - Every publish is kept as a revision for 30 days, whatever its source, with quick-edit publishes marked
+    (2026-10-27).
 - **Categories:**
   - Multi-tag.
   - Rename and delete.
@@ -331,7 +334,7 @@ If unsent items sit on more than one check, Send, Stay and Send new first ask:
 | Green | open, nothing sent |
 | Blue | fired, waiting |
 | Orange | waiting with items held |
-| Red | fulfilled with items held |
+| Red | items held, nothing on fire (2026-10-27: confirmed — the concern is the lack of firing items, fulfilled or not) |
 | Grey | all fulfilled |
 
 Unsent items are already accounted for in these states.
@@ -357,13 +360,14 @@ Unsent items are already accounted for in these states.
   - **Separate some of a quantity** onto its own line, on the same check, another check or a new check.
   - **Divide into equal parts:** halves, 3, 4, 5 or 6 ways, or any number from 2 to 20. Optionally put each part on its own check, starting with the current check and adding checks as needed.
   - A $ amount adjustment on the item is divided proportionally.
-  - Splitting is blocked while a removal on that item is pending.
+  - A pending removal never blocks splitting (2026-10-27): the request follows the item wherever it goes.
 - **Split by seat** builds one check per seat:
   - **Single seat:** the item goes to that seat's check.
   - **Quantity equals seat count:** one each.
   - **Otherwise:** shares, as is the whole-table "share" seat across all seats.
   - **No seat:** a "No seat" check.
-  - Blocked while a removal or check discount is pending or applied.
+  - Pending removals and check discounts never block it (2026-10-27): requests follow their items, and a
+    check-level discount is recalculated without any items that moved to other checks.
 - **Close** closes the current check:
   - It posts depletion and logs the close with an attribution of every discount.
   - Closing the last check closes the tab and returns to the Floor.
@@ -407,7 +411,7 @@ Unsent items are already accounted for in these states.
 - When a manager signs in, the queue opens automatically if anything is waiting. A nav button (Approvals, Transfers or Inbox) shows the count.
 - Each request shows the table and check, items, reason, who asked and how long ago, with Approve, Deny and Approve all.
 - A denied request leaves "… denied by Morgan" on the item or check.
-- Pending items can be cancelled by the server, or approved on the spot by a manager.
+- Anyone can cancel a pending request; only managers can approve (2026-10-27).
 - A manager can undo an applied removal.
 - Every step is logged, including failed codes and how long a request waited.
 
@@ -435,7 +439,8 @@ Unsent items are already accounted for in these states.
 
 ### Quick ticket
 
-A check with no table.
+A tab with no table (2026-10-27): ownership, transfers and clock-out behave exactly as on a table ticket — the
+only difference is the missing table assignment.
 
 ### Open list
 
@@ -479,6 +484,8 @@ A check with no table.
   - Open tabs.
 - Payment figures (tips, cash due, tip-out) come from the processor in production.
 - Clock out stays disabled while the person has open tabs.
+- Figures follow the tab's server (the opener), not whoever pressed Close. Closing another server's check
+  prompts to confirm ownership (2026-10-27).
 
 ### Transfer all checks
 
@@ -494,7 +501,8 @@ A check with no table.
 
 ### Schedule
 
-Editable in Library > Happy hour, and publishes like everything else.
+Editable in Library > Happy hour, and publishes like everything else. A window may cross midnight
+(2026-10-27) — an end time earlier than the start runs into the next day.
 
 | Day | Window |
 |---|---|
@@ -524,7 +532,9 @@ Editable in Library > Happy hour, and publishes like everything else.
 
 ## 15. Event log (audit)
 
-Every action is an event. Event types in the prototype include:
+Every action is an event — and for now every button press too (2026-10-27): raw taps that commit nothing are
+logged as uncommitted and may be discarded after a month; committed actions are kept. Recording may be relaxed
+if go-live volume demands it. Event types in the prototype include:
 
 - **Session:** login, lock, clock_in, clock_out, shift_close_open, test_time.
 - **Ring-in and editing:**
@@ -586,6 +596,27 @@ Reporting needs these confirmed:
 - Price overrides were cleared for now and will be reconciled at go-live.
 - One Burger (2026-10-27): the duplicate Lunch Burger was deleted from the seed; it is the same item on both
   menus, with the lunch price as a menu price modifier (+$4 over the $18 dinner price).
+
+2026-10-27, the owner's answers to the build questions:
+
+- **Logging:** every button press is logged for now. Uncommitted taps may be discarded after a month to avoid
+  pile-up during testing. Recording may be relaxed if the action volume climbs significantly at go-live.
+- **Publishing:** anything published is recorded as a revision regardless of source, and quick-edit publishes
+  are marked so they can be found. Revision history is kept for 30 days.
+- **Custom-pour basis:** stays one product-level field, which also seeds each new serving button's basis.
+- **Snapping:** a matching keypad entry becomes the standard pour; the typed number and unit are recorded in
+  the ring-in event.
+- **Shift close:** figures follow the tab's server (the opener), not whoever pressed Close. When the closer is
+  not the opener, the register prompts to confirm ownership.
+- **Happy hour windows may cross midnight.** Not needed today; built now in case it ever is.
+- **Floor red** is correct as the prototype shows it: red means items are held while nothing is on fire —
+  whether or not anything was fulfilled. (The old "fulfilled with items held" wording was too narrow.)
+- **Splits and merges:** a pending removal never blocks splitting or merging. The request or pending change
+  follows its item; a check-level discount is recalculated without any items that were moved away.
+- **Approvals:** anyone can cancel a pending request; only managers can approve.
+- **Quick ticket:** owned like any tab — the only difference is the missing table assignment.
+- **Register banner:** shows when the saved draft differs from what is published; unsaved edits are a concern
+  of the device doing the editing.
 
 ---
 

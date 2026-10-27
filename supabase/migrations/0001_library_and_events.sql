@@ -10,12 +10,18 @@
 -- ============================================================================
 
 -- The library publishes as one unit (products, categories, settings, mods).
--- Every publish is a numbered revision; the register reads only the highest
--- published revision. Reverting republishes an old revision's data as a new
--- revision — history is never rewritten (SPEC §1/§7).
+-- Every publish is a numbered revision WHATEVER its source — a normal
+-- publish, a quick edit (marked, so they can be found), or a revert, which
+-- republishes an old revision's data as a new revision; history is never
+-- rewritten (SPEC §1/§7; Conner 2026-10-27).
+-- Retention (Conner 2026-10-27): revisions are kept for 30 days; a cleanup
+-- job prunes older ones but NEVER the current published revision or the
+-- current draft.
 create table if not exists library_revisions (
   rev         bigint generated always as identity primary key,
   kind        text not null check (kind in ('draft', 'published')),
+  source      text not null default 'publish'
+              check (source in ('publish', 'quick_edit', 'revert')),
   data        jsonb not null,
   created_at  timestamptz not null default now(),
   created_by  text,                -- staff identity; staff tables come with auth milestone
@@ -30,14 +36,19 @@ create table if not exists library_state (
 );
 
 -- The append-only event log (SPEC §15): {ts, type, user, tab, ...data}.
--- Reporting is built from it. Nothing is ever updated or deleted; production
--- keeps everything (the prototype's 5,000-event cap was a browser shortcut).
+-- Reporting is built from it. Nothing is ever updated or deleted.
+-- Logging bar (Conner 2026-10-27): every button press is logged for now.
+-- Committed actions (committed = true) are kept forever; raw UI taps
+-- (committed = false — keypad digits, navigation, category chips) may be
+-- discarded after 30 days to avoid pile-up during testing. Recording may be
+-- relaxed if live volume climbs — that is Conner's call, never a quiet trim.
 create table if not exists events (
   id        bigint generated always as identity primary key,
   ts        timestamptz not null default now(),
   type      text not null,
   staff_pin text,                  -- "user" in the spec; column name avoids the keyword
   tab_id    text,
+  committed boolean not null default true,
   data      jsonb not null default '{}'::jsonb
 );
 
