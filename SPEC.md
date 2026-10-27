@@ -584,6 +584,8 @@ Reporting needs these confirmed:
 - % discounts are exact; base menu prices stay whole dollars.
 - Happy hour schedule as above; pricing per menu or item; a prompt within 5 minutes of the end.
 - Price overrides were cleared for now and will be reconciled at go-live.
+- One Burger (2026-10-27): the duplicate Lunch Burger was deleted from the seed; it is the same item on both
+  menus, with the lunch price as a menu price modifier (+$4 over the $18 dinner price).
 
 ---
 
@@ -600,7 +602,9 @@ None of these block the build.
 
 ## 18. Seed data
 
-`data/pos_data.json` holds 377 products: 256 pours from the Price Book and 121 menu items from the Menu Guide. It also includes 18 categories and starting counts.
+`data/pos_data.json` holds 376 products: 256 pours from the Price Book and 120 menu items from the Menu Guide
+(121 at handoff; the Lunch Burger was consolidated into the Dinner one on 2026-10-27 — see the decisions log and
+`data/README.md`). It also includes 18 categories and starting counts.
 
 - Cocktail and café recipes come from the Recipe Book and are matched to products through an alias map. Matching is limited to drink categories.
 - The JSON still contains the Price Book serving overrides. The prototype strips them at load (`migNoOverride`).

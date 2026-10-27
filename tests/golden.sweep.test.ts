@@ -197,7 +197,7 @@ describe('golden sweep vs the prototype reference', () => {
       checked++;
     }
     // every seed product has a price, so nothing may be skipped silently
-    expect(checked).toBe(377);
+    expect(checked).toBe(376);
   });
 
   it('resolves the happy-hour rule (precedence incl. parents) identically on every product', () => {

@@ -14,10 +14,30 @@ describe('seedLibrary', () => {
   const pours = lib.products.filter(isPour);
   const items = lib.products.filter(isItem);
 
-  it('loads 377 products: 256 pours and 121 menu items', () => {
-    expect(lib.products).toHaveLength(377);
+  it('loads 376 products: 256 pours and 120 menu items (Lunch Burger consolidated, 2026-10-27)', () => {
+    expect(lib.products).toHaveLength(376);
     expect(pours).toHaveLength(256);
-    expect(items).toHaveLength(121);
+    expect(items).toHaveLength(120);
+  });
+
+  it('has one Burger, on both menus, with the lunch price as a modifier (Conner, 2026-10-27)', () => {
+    const burgers = items.filter((i) => i.name === 'Burger');
+    expect(burgers).toHaveLength(1);
+    const burger = burgers[0]!;
+    expect(burger.price).toBe(1800);
+    expect(burger.cats).toEqual(['Dinner', 'Lunch']);
+    expect(burger.primary).toBe('Dinner');
+    const menu = lib.mods.groups.find((g) => g.id === 'burgermenu')!;
+    expect(menu.multi).toBe(false);
+    expect(menu.items.map((i) => ({ name: i.name, price: i.price }))).toEqual([
+      { name: 'Dinner', price: 0 },
+      { name: 'Lunch', price: 400 },
+    ]);
+    expect(lib.mods.items[burger.id]!.groups).toContainEqual({ gid: 'burgermenu', rule: 'force' });
+    // Steak Au Poivre keeps its setup without the menu group
+    const steak = items.find((i) => i.name === 'Steak Au Poivre')!;
+    expect(lib.mods.items[steak.id]!.groups.some((g) => g.gid === 'burgermenu')).toBe(false);
+    expect(lib.mods.items[steak.id]!.groups).toContainEqual({ gid: 'temp', rule: 'required' });
   });
 
   it('65 menu items carry placeholder prices (SPEC §17)', () => {
@@ -86,7 +106,7 @@ describe('seedLibrary', () => {
 
   it('seeds the starter modifier groups and assignments (prototype seedMods)', () => {
     const ids = lib.mods.groups.map((g) => g.id);
-    expect(ids).toEqual(['seat', 'course', 'general', 'cocktail', 'allergen', 'milk', 'temp', 'tinct']);
+    expect(ids).toEqual(['seat', 'course', 'general', 'cocktail', 'allergen', 'milk', 'temp', 'burgermenu', 'tinct']);
     const cocktail = lib.mods.groups.find((g) => g.id === 'cocktail')!;
     expect(cocktail.items[0]).toMatchObject({ name: 'Old Fashioned', price: 400 });
     const tinct = lib.mods.groups.find((g) => g.id === 'tinct')!;

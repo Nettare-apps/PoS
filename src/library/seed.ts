@@ -204,6 +204,9 @@ export function seedMods(products: Product[]): ModsConfig {
     ),
     g('milk', 'Milk', false, [['Whole'], ['Oat', 1], ['Skim'], ['Half & half'], ['No milk']]),
     g('temp', 'Temperature', false, [['Rare'], ['Medium rare'], ['Medium'], ['Medium well'], ['Well']]),
+    // Conner, 2026-10-27: one Burger on both menus; the lunch price is a
+    // menu price modifier (+$4 over the $18 dinner price), not a second item.
+    g('burgermenu', 'Menu', false, [['Dinner'], ['Lunch', 4]]),
     g('tinct', 'Tonics & Tinctures', true, [
       ['Aplos Arise 1 oz', 9, { pid: 'pb239', ml: OZ_TO_ML }],
       ['Aplos Calme 1 oz', 9, { pid: 'pb240', ml: OZ_TO_ML }],
@@ -222,15 +225,14 @@ export function seedMods(products: Product[]): ModsConfig {
     'Cheese & Charcuterie': [a('seat', 'force'), a('course', 'force'), a('general'), a('allergen')],
   };
   const items: ModsConfig['items'] = {};
-  for (const n of ['Burger', 'Steak Au Poivre']) {
-    const id = byName(n);
-    if (id) {
-      items[id] = {
-        inherit: false,
-        groups: [a('seat', 'required'), a('course', 'force'), a('temp', 'required'), a('general'), a('allergen')],
-      };
-    }
-  }
+  const grillSetup = (extra: ModAssignment[] = []): { inherit: false; groups: ModAssignment[] } => ({
+    inherit: false,
+    groups: [a('seat', 'required'), a('course', 'force'), ...extra, a('temp', 'required'), a('general'), a('allergen')],
+  });
+  const burgerId = byName('Burger');
+  if (burgerId) items[burgerId] = grillSetup([a('burgermenu', 'force')]);
+  const steakId = byName('Steak Au Poivre');
+  if (steakId) items[steakId] = grillSetup();
   return { groups, menus, items };
 }
 
